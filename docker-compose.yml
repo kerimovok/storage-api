@@ -1,0 +1,8 @@
+services:
+  storage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./uploads:/usr/src/app/uploads
+    restart: always
