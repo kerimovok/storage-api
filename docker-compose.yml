@@ -4,5 +4,5 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ./uploads:/usr/src/app/uploads
+      - ../files/uploads:/usr/src/app/uploads
     restart: always
