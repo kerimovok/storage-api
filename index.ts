@@ -29,13 +29,8 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage })
 
-// API Routes
-const apiRouter = express.Router()
-app.use('/api', apiRouter)
 const v1Router = express.Router()
-apiRouter.use('/v1', v1Router)
 
-// Upload routes
 v1Router.post('/upload/single', upload.single('image'), (req, res) => {
 	if (!req.file) {
 		return res.status(400).send('No file uploaded.')
@@ -53,6 +48,9 @@ v1Router.post('/upload/multiple', upload.array('images'), (req, res) => {
 	)
 	res.send({ imageUrls })
 })
+
+// Mount both versions
+app.use('/api/v1', v1Router)
 
 // Static file serving
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
