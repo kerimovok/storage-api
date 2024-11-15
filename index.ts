@@ -31,7 +31,7 @@ const upload = multer({ storage: storage })
 
 const v1Router = express.Router()
 
-v1Router.post('/upload/single', upload.single('image'), (req, res) => {
+v1Router.post('/upload.single', upload.single('image'), (req, res) => {
 	if (!req.file) {
 		return res.status(400).send('No file uploaded.')
 	}
@@ -39,7 +39,7 @@ v1Router.post('/upload/single', upload.single('image'), (req, res) => {
 	res.send({ imageUrl })
 })
 
-v1Router.post('/upload/multiple', upload.array('images'), (req, res) => {
+v1Router.post('/upload.multiple', upload.array('images'), (req, res) => {
 	if (!req.files) {
 		return res.status(400).send('No files uploaded.')
 	}
@@ -49,7 +49,6 @@ v1Router.post('/upload/multiple', upload.array('images'), (req, res) => {
 	res.send({ imageUrls })
 })
 
-// Mount both versions
 app.use('/api/v1', v1Router)
 
 // Static file serving
