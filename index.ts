@@ -49,10 +49,10 @@ v1Router.post('/upload.multiple', upload.array('images'), (req, res) => {
 	res.send({ imageUrls })
 })
 
-app.use('/api/v1', v1Router)
-
 // Static file serving
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
+v1Router.use('/uploads', express.static(path.join(__dirname, 'uploads')))
+
+app.use('/api/v1', v1Router)
 
 app.listen(port, () => {
 	console.log(`Server is running on http://0.0.0.0:${port}`)
