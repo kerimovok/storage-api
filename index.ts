@@ -29,8 +29,14 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage })
 
-// single file upload
-app.post('/upload.single', upload.single('image'), (req, res) => {
+// API Routes
+const apiRouter = express.Router()
+app.use('/api', apiRouter)
+const v1Router = express.Router()
+apiRouter.use('/v1', v1Router)
+
+// Upload routes
+v1Router.post('/upload/single', upload.single('image'), (req, res) => {
 	if (!req.file) {
 		return res.status(400).send('No file uploaded.')
 	}
@@ -38,8 +44,7 @@ app.post('/upload.single', upload.single('image'), (req, res) => {
 	res.send({ imageUrl })
 })
 
-// multiple file upload
-app.post('/upload.multiple', upload.array('images'), (req, res) => {
+v1Router.post('/upload/multiple', upload.array('images'), (req, res) => {
 	if (!req.files) {
 		return res.status(400).send('No files uploaded.')
 	}
@@ -49,6 +54,7 @@ app.post('/upload.multiple', upload.array('images'), (req, res) => {
 	res.send({ imageUrls })
 })
 
+// Static file serving
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
 
 app.listen(port, () => {
