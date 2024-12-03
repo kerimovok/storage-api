@@ -6,7 +6,7 @@ import cors from 'cors'
 import fs from 'fs'
 
 const app = express()
-const port = process.env.PORT || 3002
+const port = process.env.PORT || 3003
 app.use(bodyParser.json())
 app.use(cors())
 
