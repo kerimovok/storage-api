@@ -21,4 +21,4 @@ COPY --from=install /temp/prod/node_modules node_modules
 COPY --from=prerelease /usr/src/app/dist ./dist
 COPY --from=prerelease /usr/src/app/package.json ./
 
-ENTRYPOINT [ "bun", "dist/index.js" ]
+ENTRYPOINT [ "bun", "start:prod" ]
