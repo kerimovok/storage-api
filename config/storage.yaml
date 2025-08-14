@@ -1,0 +1,97 @@
+storage:
+    # File validation settings
+    validation:
+        # Maximum file size in bytes (default: 10MB)
+        max_file_size: 10485760
+
+        # Allowed file types/extensions
+        allowed_extensions:
+            - jpg
+            - jpeg
+            - png
+            - gif
+            - pdf
+            - doc
+            - docx
+            - xls
+            - xlsx
+            - txt
+            - csv
+            - zip
+            - rar
+            - mp4
+            - avi
+            - mov
+            - mp3
+            - wav
+
+        # Blocked file types/extensions
+        blocked_extensions:
+            - exe
+            - bat
+            - cmd
+            - com
+            - pif
+            - scr
+            - vbs
+            - js
+
+        # MIME type validation
+        strict_mime_validation: true
+
+    # Storage organization settings
+    organization:
+        # Default organization pattern: date/type/filename
+        # Options: date, type, user, custom
+        pattern: 'date/type'
+
+        # Custom organization function (if pattern is "custom")
+        custom_pattern: ''
+
+        # Date format for folder naming
+        date_format: '2006-01-02'
+
+        # Include time in date folders (creates hourly folders)
+        include_time: false
+
+        # File naming strategy
+        naming:
+            # Options: original, uuid, timestamp, custom
+            strategy: 'uuid'
+            # Custom naming function (if strategy is "custom")
+            custom_function: ''
+            # Preserve original extension
+            preserve_extension: true
+
+    # Local storage settings
+    storage:
+        # Base upload directory
+        upload_dir: './uploads'
+        # Create directories if they don't exist
+        create_dirs: true
+        # File permissions (octal)
+        file_permissions: '0644'
+        # Directory permissions (octal)
+        dir_permissions: '0755'
+
+    # Security settings
+    security:
+        # Generate secure URLs for files
+        secure_urls: true
+        # URL expiration time (0 = no expiration)
+        url_expiration: 0
+        # Require authentication for file access
+        require_auth: false
+        # Allowed referrers (empty = all allowed)
+        allowed_referrers: []
+
+    # Cleanup settings
+    cleanup:
+        # Enable automatic cleanup of old files
+        enabled: false
+        # Cleanup interval (hours)
+        interval: 24
+        # Keep files for this many days
+        retention_days: 30
+        # Cleanup strategy: delete, archive, move
+        strategy: 'delete'

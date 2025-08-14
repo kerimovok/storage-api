@@ -1,0 +1,18 @@
+.idea
+
+# Environment variables
+.env
+
+# Uploads
+uploads/*
+!uploads/.gitkeep
+
+# DS_STORE
+.DS_Store
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
