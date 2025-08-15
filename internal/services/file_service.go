@@ -1,6 +1,7 @@
 package services
 
 import (
+	"crypto/md5"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -311,9 +312,17 @@ func (s *FileService) CalculateFileHash(filePath string) (string, error) {
 	}
 	defer file.Close()
 
-	// For now, return a placeholder hash
-	// TODO: Implement actual hash calculation when needed
-	return "placeholder_hash", nil
+	// Create MD5 hash
+	hash := md5.New()
+
+	// Copy file content to hash
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", errors.InternalError("HASH_CALCULATION_ERROR", fmt.Sprintf("Failed to calculate hash: %v", err))
+	}
+
+	// Get hash as hex string
+	hashBytes := hash.Sum(nil)
+	return fmt.Sprintf("%x", hashBytes), nil
 }
 
 // GetMaxFileSizeForExtension returns the maximum allowed file size for a specific extension
