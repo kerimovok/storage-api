@@ -33,7 +33,6 @@ func SetupRoutes(app *fiber.App) {
 	files.Get("/", fileHandler.SearchFiles)
 	files.Get("/limits", fileHandler.GetFileLimits)
 	files.Get("/:id", fileHandler.GetFile)
-	files.Get("/:id/download", fileHandler.DownloadFile)
 	files.Put("/:id", fileHandler.UpdateFile)
 	files.Delete("/:id", fileHandler.DeleteFile)
 }

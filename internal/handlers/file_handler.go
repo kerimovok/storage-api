@@ -138,7 +138,7 @@ func (h *FileHandler) UploadFile(c *fiber.Ctx) error {
 	return c.Status(status).JSON(response)
 }
 
-// GetFile retrieves file information
+// GetFile retrieves file information or downloads the file based on query parameter
 func (h *FileHandler) GetFile(c *fiber.Ctx) error {
 	id := c.Params("id")
 	fileID, err := uuid.Parse(id)
@@ -157,37 +157,22 @@ func (h *FileHandler) GetFile(c *fiber.Ctx) error {
 		return httpx.SendResponse(c, response)
 	}
 
-	response := httpx.OK("File retrieved successfully", file)
-	return httpx.SendResponse(c, response)
-}
-
-// DownloadFile handles file download requests
-func (h *FileHandler) DownloadFile(c *fiber.Ctx) error {
-	id := c.Params("id")
-	fileID, err := uuid.Parse(id)
-	if err != nil {
-		response := httpx.BadRequest("Invalid file ID", err)
-		return httpx.SendResponse(c, response)
-	}
-
-	var file models.File
-	if err := database.DB.First(&file, fileID).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			response := httpx.NotFound("File not found")
+	// Check if download is requested via query parameter
+	download := c.Query("download")
+	if download == "true" || download == "1" {
+		// Check if file exists on disk
+		if _, err := os.Stat(file.FilePath); os.IsNotExist(err) {
+			response := httpx.NotFound("File not found on disk")
 			return httpx.SendResponse(c, response)
 		}
-		response := httpx.InternalServerError("Failed to fetch file", err)
-		return httpx.SendResponse(c, response)
+
+		// Send file for download
+		return c.Download(file.FilePath, file.OriginalName)
 	}
 
-	// Check if file exists on disk
-	if _, err := os.Stat(file.FilePath); os.IsNotExist(err) {
-		response := httpx.NotFound("File not found on disk")
-		return httpx.SendResponse(c, response)
-	}
-
-	// Send file
-	return c.Download(file.FilePath, file.OriginalName)
+	// Return file metadata by default
+	response := httpx.OK("File retrieved successfully", file)
+	return httpx.SendResponse(c, response)
 }
 
 // UpdateFile updates file information
