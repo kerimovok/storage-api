@@ -12,7 +12,6 @@ type UpdateFileRequest struct {
 
 // FileSearchRequest represents a file search request
 type FileSearchRequest struct {
-	Query          string     `json:"query,omitempty"`
 	FileType       string     `json:"fileType,omitempty"`
 	Status         string     `json:"status,omitempty" validate:"omitempty,oneof=active inactive archived deleted"`
 	UploadedAfter  *time.Time `json:"uploadedAfter,omitempty"`

@@ -292,9 +292,6 @@ func (h *FileHandler) SearchFiles(c *fiber.Ctx) error {
 	query := database.DB.Model(&models.File{})
 
 	// Apply filters
-	if input.Query != "" {
-		query = query.Where("original_name ILIKE ? OR file_type ILIKE ?", "%"+input.Query+"%", "%"+input.Query+"%")
-	}
 	if input.FileType != "" {
 		query = query.Where("file_type = ?", input.FileType)
 	}
