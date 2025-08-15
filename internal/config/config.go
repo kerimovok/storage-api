@@ -4,19 +4,30 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"storage-api/internal/utils"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/kerimovok/go-pkg-utils/config"
 	"gopkg.in/yaml.v3"
 )
 
+// ValidationRule represents a file validation rule
+type ValidationRule struct {
+	Name       string   `yaml:"name"`
+	Extensions []string `yaml:"extensions,omitempty"`
+	Patterns   []string `yaml:"patterns,omitempty"`
+	MimeTypes  []string `yaml:"mime_types,omitempty"`
+	MaxSize    string   `yaml:"max_size,omitempty"`
+	Allow      bool     `yaml:"allow"`
+}
+
 // FileValidationConfig holds file validation settings
 type FileValidationConfig struct {
-	MaxFileSizePerExtension map[string]int64 `yaml:"max_file_size_per_extension"`
-	DefaultMaxFileSize      int64            `yaml:"default_max_file_size"`
-	AllowedExtensions       []string         `yaml:"allowed_extensions"`
-	BlockedExtensions       []string         `yaml:"blocked_extensions"`
-	StrictMimeValidation    bool             `yaml:"strict_mime_validation"`
+	DefaultMaxSize       string           `yaml:"default_max_size"`
+	DefaultAction        string           `yaml:"default_action"`
+	StrictMimeValidation bool             `yaml:"strict_mime_validation"`
+	Rules                []ValidationRule `yaml:"rules"`
 }
 
 // FileNamingConfig holds file naming strategy settings
@@ -54,6 +65,21 @@ type MainConfig struct {
 var (
 	Config MainConfig
 )
+
+// GetDefaultMaxFileSize returns the default max file size in bytes
+func (c *FileValidationConfig) GetDefaultMaxFileSize() int64 {
+	size, err := utils.ParseSizeString(c.DefaultMaxSize)
+	if err != nil {
+		log.Printf("Warning: Invalid default max file size '%s', using 10MB as fallback", c.DefaultMaxSize)
+		return 10 * 1024 * 1024 // 10MB fallback
+	}
+	return size
+}
+
+// IsDefaultActionBlock returns true if the default action is to block files
+func (c *FileValidationConfig) IsDefaultActionBlock() bool {
+	return strings.ToLower(c.DefaultAction) == "block"
+}
 
 // LoadConfig loads the configuration from the specified path
 func LoadConfig() error {

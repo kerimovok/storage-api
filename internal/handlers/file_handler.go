@@ -3,12 +3,11 @@ package handlers
 import (
 	"log"
 	"os"
-	"path/filepath"
 	"storage-api/internal/database"
 	"storage-api/internal/models"
 	"storage-api/internal/requests"
 	"storage-api/internal/services"
-	"strings"
+	"storage-api/internal/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -58,8 +57,8 @@ func (h *FileHandler) UploadFile(c *fiber.Ctx) error {
 	}
 
 	// Determine file type from extension
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	fileType := strings.TrimPrefix(ext, ".")
+	ext := utils.GetFileExtensionFromHeader(file)
+	fileType := ext
 
 	// Generate file path and name
 	filePath, storedName, err := h.fileService.GenerateFilePath(file.Filename, fileType)

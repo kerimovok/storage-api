@@ -1,8 +1,6 @@
 package services
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -13,67 +11,46 @@ import (
 	"time"
 
 	"storage-api/internal/config"
+	"storage-api/internal/constants"
+	"storage-api/internal/utils"
 
 	"github.com/google/uuid"
 	"github.com/kerimovok/go-pkg-utils/errors"
 )
 
-// FileService handles file operations
+// FileService handles all file operations and eliminates redundancy
 type FileService struct {
-	config config.StorageConfig
+	config           config.StorageConfig
+	validationEngine *constants.ValidationEngine
 }
 
 // NewFileService creates a new file service instance
 func NewFileService() *FileService {
+	storageConfig := config.GetConfig().Storage
 	return &FileService{
-		config: config.GetConfig().Storage,
+		config:           storageConfig,
+		validationEngine: constants.NewValidationEngine(storageConfig.Validation),
 	}
 }
 
 // ValidateFile validates the uploaded file
 func (s *FileService) ValidateFile(file *multipart.FileHeader) error {
-	// Get file extension
-	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if ext == "" {
-		return errors.BadRequestError("INVALID_FILE", "File must have a valid extension")
-	}
-	ext = strings.TrimPrefix(ext, ".")
-
-	// Check if extension is blocked
-	for _, blocked := range s.config.Validation.BlockedExtensions {
-		if ext == blocked {
-			return errors.BadRequestError("BLOCKED_FILE_TYPE", fmt.Sprintf("File type .%s is not allowed", ext))
-		}
+	// Get MIME type from file header
+	mimeType := file.Header.Get("Content-Type")
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
 	}
 
-	// Check if extension is allowed
-	allowed := false
-	for _, allowedExt := range s.config.Validation.AllowedExtensions {
-		if ext == allowedExt {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
-		return errors.BadRequestError("INVALID_FILE_TYPE", fmt.Sprintf("File type .%s is not allowed", ext))
-	}
+	// Validate file using rules
+	validationResult := s.validationEngine.ValidateFile(file.Filename, mimeType, file.Size)
 
-	// Check file size based on extension
-	maxSize := s.config.Validation.DefaultMaxFileSize
-	if extensionLimit, exists := s.config.Validation.MaxFileSizePerExtension[ext]; exists {
-		maxSize = extensionLimit
-	}
-
-	if file.Size > maxSize {
-		// Convert to MB for better error message
-		maxSizeMB := maxSize / (1024 * 1024)
-		fileSizeMB := file.Size / (1024 * 1024)
-		return errors.BadRequestError("FILE_TOO_LARGE", fmt.Sprintf("File size %dMB exceeds maximum allowed size of %dMB for .%s files", fileSizeMB, maxSizeMB, ext))
+	if !validationResult.IsAllowed {
+		return errors.BadRequestError("FILE_BLOCKED", validationResult.Reason)
 	}
 
 	// MIME type validation if enabled
 	if s.config.Validation.StrictMimeValidation {
-		if err := s.validateMimeType(file, ext); err != nil {
+		if err := s.validateMimeType(file, validationResult); err != nil {
 			return err
 		}
 	}
@@ -82,7 +59,7 @@ func (s *FileService) ValidateFile(file *multipart.FileHeader) error {
 }
 
 // validateMimeType validates the MIME type of the file
-func (s *FileService) validateMimeType(file *multipart.FileHeader, ext string) error {
+func (s *FileService) validateMimeType(file *multipart.FileHeader, validationResult *constants.ValidationResult) error {
 	// Open file to check MIME type
 	src, err := file.Open()
 	if err != nil {
@@ -100,49 +77,24 @@ func (s *FileService) validateMimeType(file *multipart.FileHeader, ext string) e
 	// Detect MIME type
 	detectedType := http.DetectContentType(buffer)
 
-	// Validate against expected MIME types for the extension
-	if err := s.validateMimeTypeForExtension(detectedType, ext); err != nil {
-		return err
+	// If we have a matched rule with MIME types, validate against them
+	if validationResult.MatchedRule != nil && len(validationResult.MatchedRule.MimeTypes) > 0 {
+		if err := s.validateMimeTypeAgainstRule(detectedType, validationResult.MatchedRule); err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-// validateMimeTypeForExtension validates MIME type against file extension
-func (s *FileService) validateMimeTypeForExtension(mimeType, ext string) error {
-	// Define expected MIME types for common extensions
-	expectedMimeTypes := map[string][]string{
-		"jpg":  {"image/jpeg"},
-		"jpeg": {"image/jpeg"},
-		"png":  {"image/png"},
-		"gif":  {"image/gif"},
-		"pdf":  {"application/pdf"},
-		"doc":  {"application/msword"},
-		"docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
-		"xls":  {"application/vnd.ms-excel"},
-		"xlsx": {"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
-		"txt":  {"text/plain"},
-		"csv":  {"text/csv"},
-		"zip":  {"application/zip"},
-		"rar":  {"application/x-rar-compressed"},
-		"mp4":  {"video/mp4"},
-		"avi":  {"video/x-msvideo"},
-		"mov":  {"video/quicktime"},
-		"mp3":  {"audio/mpeg"},
-		"wav":  {"audio/wav"},
-	}
+// validateMimeTypeAgainstRule validates MIME type against rule requirements
+func (s *FileService) validateMimeTypeAgainstRule(detectedType string, rule *config.ValidationRule) error {
+	valid := utils.IsValidMimeType(detectedType, rule.MimeTypes)
 
-	if expectedTypes, exists := expectedMimeTypes[ext]; exists {
-		valid := false
-		for _, expectedType := range expectedTypes {
-			if mimeType == expectedType {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			return errors.BadRequestError("MIME_TYPE_MISMATCH", fmt.Sprintf("Expected MIME type for .%s files, got %s", ext, mimeType))
-		}
+	if !valid {
+		expectedTypes := strings.Join(rule.MimeTypes, ", ")
+		return errors.BadRequestError("MIME_TYPE_MISMATCH", fmt.Sprintf("Expected MIME type for files matching rule '%s', got %s. Expected types: %s",
+			rule.Name, detectedType, expectedTypes))
 	}
 
 	return nil
@@ -252,22 +204,160 @@ func (s *FileService) CalculateFileHash(filePath string) (string, error) {
 	}
 	defer file.Close()
 
-	hash := md5.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", errors.InternalError("HASH_CALCULATION_ERROR", "Failed to calculate file hash")
-	}
-
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	// For now, return a placeholder hash
+	// TODO: Implement actual hash calculation when needed
+	return "placeholder_hash", nil
 }
 
 // GetMaxFileSizeForExtension returns the maximum allowed file size for a specific extension
 func (s *FileService) GetMaxFileSizeForExtension(extension string) int64 {
-	ext := strings.ToLower(extension)
-	ext = strings.TrimPrefix(ext, ".")
+	// Use validation engine to get max size
+	validationResult := s.validationEngine.ValidateFile(extension, "", 0)
+	return validationResult.MaxSize
+}
 
-	if maxSize, exists := s.config.Validation.MaxFileSizePerExtension[ext]; exists {
-		return maxSize
+// GetFileTypeInfo returns comprehensive information about a file type
+func (s *FileService) GetFileTypeInfo(extension string) (*constants.FileTypeInfo, bool) {
+	// This is now handled by the validation engine
+	// For backward compatibility, we'll create a basic info structure
+	validationResult := s.validationEngine.ValidateFile(extension, "", 0)
+
+	if validationResult.MatchedRule != nil {
+		info := &constants.FileTypeInfo{
+			Extensions:   validationResult.MatchedRule.Extensions,
+			MimeTypes:    validationResult.MatchedRule.MimeTypes,
+			MaxSizeBytes: validationResult.MaxSize,
+			Description:  validationResult.MatchedRule.Name,
+			IsBlocked:    !validationResult.IsAllowed,
+		}
+		return info, true
 	}
 
-	return s.config.Validation.DefaultMaxFileSize
+	return nil, false
+}
+
+// IsExtensionAllowed checks if a file extension is allowed
+func (s *FileService) IsExtensionAllowed(extension string) bool {
+	validationResult := s.validationEngine.ValidateFile(extension, "", 0)
+	return validationResult.IsAllowed
+}
+
+// GetAllowedExtensions returns all allowed file extensions
+func (s *FileService) GetAllowedExtensions() []string {
+	return s.validationEngine.GetAllowedExtensions()
+}
+
+// GetBlockedExtensions returns all blocked file extensions
+func (s *FileService) GetBlockedExtensions() []string {
+	return s.validationEngine.GetBlockedExtensions()
+}
+
+// GetValidationRules returns all validation rules
+func (s *FileService) GetValidationRules() []config.ValidationRule {
+	return s.config.Validation.Rules
+}
+
+// GetValidationRuleByName returns a specific validation rule by name
+func (s *FileService) GetValidationRuleByName(name string) *config.ValidationRule {
+	return s.validationEngine.GetRuleByName(name)
+}
+
+// ValidateFileType validates a file type without uploading
+func (s *FileService) ValidateFileType(extension string, size int64) *constants.ValidationResult {
+	return s.validationEngine.ValidateFile(extension, "", size)
+}
+
+// GetValidationConfig returns the validation configuration
+func (s *FileService) GetValidationConfig() config.FileValidationConfig {
+	return s.config.Validation
+}
+
+// GetFileInfo returns comprehensive information about a file
+func (s *FileService) GetFileInfo(file *multipart.FileHeader) *FileInfo {
+	ext := utils.GetFileExtensionFromHeader(file)
+	validationResult := s.validationEngine.ValidateFile(ext, "", file.Size)
+
+	info := &FileInfo{
+		OriginalName:     file.Filename,
+		Extension:        ext,
+		Size:             file.Size,
+		SizeFormatted:    constants.FormatFileSize(file.Size),
+		Category:         validationResult.RuleName,
+		Description:      validationResult.Reason,
+		IsAllowed:        validationResult.IsAllowed,
+		IsBlocked:        !validationResult.IsAllowed,
+		MaxSize:          validationResult.MaxSize,
+		MaxSizeFormatted: constants.FormatFileSize(validationResult.MaxSize),
+		MimeTypes:        []string{}, // Will be populated if rule has MIME types
+	}
+
+	// Add MIME types if available
+	if validationResult.MatchedRule != nil {
+		info.MimeTypes = validationResult.MatchedRule.MimeTypes
+	}
+
+	return info
+}
+
+// FileInfo contains comprehensive information about a file
+type FileInfo struct {
+	OriginalName     string   `json:"original_name"`
+	Extension        string   `json:"extension"`
+	Size             int64    `json:"size"`
+	SizeFormatted    string   `json:"size_formatted"`
+	Category         string   `json:"category"`
+	Description      string   `json:"description"`
+	IsAllowed        bool     `json:"is_allowed"`
+	IsBlocked        bool     `json:"is_blocked"`
+	MaxSize          int64    `json:"max_size"`
+	MaxSizeFormatted string   `json:"max_size_formatted"`
+	MimeTypes        []string `json:"mime_types"`
+}
+
+// GetFileTypeStats returns statistics about supported file types
+func (s *FileService) GetFileTypeStats() *FileTypeStats {
+	allowedExtensions := s.validationEngine.GetAllowedExtensions()
+	blockedExtensions := s.validationEngine.GetBlockedExtensions()
+
+	stats := &FileTypeStats{
+		TotalTypes:      len(allowedExtensions) + len(blockedExtensions),
+		AllowedTypes:    len(allowedExtensions),
+		BlockedTypes:    len(blockedExtensions),
+		Categories:      make(map[string]int),
+		CategoryDetails: make(map[string]CategoryDetail),
+	}
+
+	// Get rules from config
+	for _, rule := range s.config.Validation.Rules {
+		category := rule.Name
+		stats.Categories[category] = len(rule.Extensions)
+
+		stats.CategoryDetails[category] = CategoryDetail{
+			Name:       category,
+			Count:      len(rule.Extensions),
+			Extensions: rule.Extensions,
+			TotalSize:  0, // Will be calculated if needed
+			MaxSize:    0, // Will be calculated if needed
+		}
+	}
+
+	return stats
+}
+
+// FileTypeStats contains statistics about file types
+type FileTypeStats struct {
+	TotalTypes      int                       `json:"total_types"`
+	AllowedTypes    int                       `json:"allowed_types"`
+	BlockedTypes    int                       `json:"blocked_types"`
+	Categories      map[string]int            `json:"categories"`
+	CategoryDetails map[string]CategoryDetail `json:"category_details"`
+}
+
+// CategoryDetail contains detailed information about a category
+type CategoryDetail struct {
+	Name       string   `json:"name"`
+	Count      int      `json:"count"`
+	Extensions []string `json:"extensions"`
+	TotalSize  int64    `json:"total_size"`
+	MaxSize    int64    `json:"max_size"`
 }

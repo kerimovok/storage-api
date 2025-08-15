@@ -1,71 +1,55 @@
 storage:
     # File validation settings
     validation:
-        # Default maximum file size in bytes (used when no specific extension limit is set)
-        default_max_file_size: 10485760 # 10MB
+        # Default maximum file size (used when no specific rule limit is set)
+        default_max_size: '10MB'
 
-        # Maximum file size per extension in bytes
-        max_file_size_per_extension:
-            # Images - smaller limits
-            jpg: 5242880 # 5MB
-            jpeg: 5242880 # 5MB
-            png: 5242880 # 5MB
-            gif: 10485760 # 10MB
-
-            # Documents - medium limits
-            pdf: 20971520 # 20MB
-            doc: 10485760 # 10MB
-            docx: 10485760 # 10MB
-            xls: 10485760 # 10MB
-            xlsx: 10485760 # 10MB
-            txt: 1048576 # 1MB
-            csv: 1048576 # 1MB
-
-            # Archives - larger limits
-            zip: 52428800 # 50MB
-            rar: 52428800 # 50MB
-
-            # Media - largest limits
-            mp4: 104857600 # 100MB
-            avi: 104857600 # 100MB
-            mov: 104857600 # 100MB
-            mp3: 20971520 # 20MB
-            wav: 52428800 # 50MB
-
-        # Allowed file types/extensions
-        allowed_extensions:
-            - jpg
-            - jpeg
-            - png
-            - gif
-            - pdf
-            - doc
-            - docx
-            - xls
-            - xlsx
-            - txt
-            - csv
-            - zip
-            - rar
-            - mp4
-            - avi
-            - mov
-            - mp3
-            - wav
-
-        # Blocked file types/extensions
-        blocked_extensions:
-            - exe
-            - bat
-            - cmd
-            - com
-            - pif
-            - scr
-            - vbs
-            - js
+        # Default action for files that don't match any rules
+        default_action: 'block' # Block everything by default
 
         # MIME type validation
         strict_mime_validation: true
+
+        # File validation rules
+        rules:
+            - name: 'Allow Images'
+              extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']
+              max_size: '5MB'
+              allow: true
+
+            - name: 'Allow Documents'
+              patterns: ['*.pdf', '*.doc', '*.docx', '*.txt', '*.csv', '*.rtf']
+              mime_types: ['application/pdf', 'application/msword', 'text/*']
+              max_size: '20MB'
+              allow: true
+
+            - name: 'Allow Archives'
+              extensions: ['zip', 'rar', '7z', 'tar', 'gz']
+              max_size: '100MB'
+              allow: true
+
+            - name: 'Allow Media'
+              extensions: ['mp4', 'avi', 'mov', 'mkv', 'mp3', 'wav', 'flac']
+              max_size: '200MB'
+              allow: true
+
+            - name: 'Allow Data Files'
+              extensions: ['json', 'xml', 'yaml', 'yml']
+              max_size: '10MB'
+              allow: true
+
+            - name: 'Allow Code Files'
+              extensions: ['js', 'ts', 'py', 'go', 'java', 'cpp', 'c', 'h']
+              max_size: '5MB'
+              allow: true
+
+            - name: 'Block Executables'
+              extensions: ['exe', 'bat', 'cmd', 'sh', 'ps1', 'vbs', 'com', 'pif', 'scr']
+              allow: false
+
+            - name: 'Block Packages'
+              extensions: ['app', 'dmg', 'deb', 'rpm']
+              allow: false
 
     # Storage organization settings
     organization:
