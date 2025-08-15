@@ -32,7 +32,7 @@ func ConnectDB() error {
 	}
 
 	// Use go-pkg-database to open connection and auto-migrate
-	db, err := sql.OpenGorm(gormConfig, &models.File{}, &models.FileAccess{}, &models.FileShare{})
+	db, err := sql.OpenGorm(gormConfig, &models.File{})
 	if err != nil {
 		return err
 	}

@@ -1,8 +1,36 @@
 storage:
     # File validation settings
     validation:
-        # Maximum file size in bytes (default: 10MB)
-        max_file_size: 10485760
+        # Default maximum file size in bytes (used when no specific extension limit is set)
+        default_max_file_size: 10485760 # 10MB
+
+        # Maximum file size per extension in bytes
+        max_file_size_per_extension:
+            # Images - smaller limits
+            jpg: 5242880 # 5MB
+            jpeg: 5242880 # 5MB
+            png: 5242880 # 5MB
+            gif: 10485760 # 10MB
+
+            # Documents - medium limits
+            pdf: 20971520 # 20MB
+            doc: 10485760 # 10MB
+            docx: 10485760 # 10MB
+            xls: 10485760 # 10MB
+            xlsx: 10485760 # 10MB
+            txt: 1048576 # 1MB
+            csv: 1048576 # 1MB
+
+            # Archives - larger limits
+            zip: 52428800 # 50MB
+            rar: 52428800 # 50MB
+
+            # Media - largest limits
+            mp4: 104857600 # 100MB
+            avi: 104857600 # 100MB
+            mov: 104857600 # 100MB
+            mp3: 20971520 # 20MB
+            wav: 52428800 # 50MB
 
         # Allowed file types/extensions
         allowed_extensions:
@@ -42,11 +70,8 @@ storage:
     # Storage organization settings
     organization:
         # Default organization pattern: date/type/filename
-        # Options: date, type, user, custom
+        # Options: date, type
         pattern: 'date/type'
-
-        # Custom organization function (if pattern is "custom")
-        custom_pattern: ''
 
         # Date format for folder naming
         date_format: '2006-01-02'
@@ -56,10 +81,8 @@ storage:
 
         # File naming strategy
         naming:
-            # Options: original, uuid, timestamp, custom
+            # Options: original, uuid, timestamp
             strategy: 'uuid'
-            # Custom naming function (if strategy is "custom")
-            custom_function: ''
             # Preserve original extension
             preserve_extension: true
 
@@ -69,29 +92,3 @@ storage:
         upload_dir: './uploads'
         # Create directories if they don't exist
         create_dirs: true
-        # File permissions (octal)
-        file_permissions: '0644'
-        # Directory permissions (octal)
-        dir_permissions: '0755'
-
-    # Security settings
-    security:
-        # Generate secure URLs for files
-        secure_urls: true
-        # URL expiration time (0 = no expiration)
-        url_expiration: 0
-        # Require authentication for file access
-        require_auth: false
-        # Allowed referrers (empty = all allowed)
-        allowed_referrers: []
-
-    # Cleanup settings
-    cleanup:
-        # Enable automatic cleanup of old files
-        enabled: false
-        # Cleanup interval (hours)
-        interval: 24
-        # Keep files for this many days
-        retention_days: 30
-        # Cleanup strategy: delete, archive, move
-        strategy: 'delete'

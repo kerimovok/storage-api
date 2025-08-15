@@ -9,11 +9,9 @@ import (
 	"storage-api/internal/requests"
 	"storage-api/internal/services"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/kerimovok/go-pkg-database/sql"
 	"github.com/kerimovok/go-pkg-utils/httpx"
 	"github.com/kerimovok/go-pkg-utils/validator"
 	"gorm.io/gorm"
@@ -48,17 +46,9 @@ func (h *FileHandler) UploadFile(c *fiber.Ctx) error {
 	}
 
 	// Validate request
-	validationErrors := validator.ValidateStruct(&input)
-	if validationErrors.HasErrors() {
-		httpxErrors := make([]httpx.ValidationError, len(validationErrors))
-		for i, err := range validationErrors {
-			httpxErrors[i] = httpx.ValidationError{
-				Field:   err.Field,
-				Message: err.Message,
-			}
-		}
-		response := httpx.UnprocessableEntityWithValidation("Validation failed", httpxErrors)
-		return httpx.SendValidationResponse(c, response)
+	if err := validator.ValidateStruct(&input); err != nil {
+		response := httpx.BadRequest("Validation failed", err)
+		return httpx.SendResponse(c, response)
 	}
 
 	// Validate file
@@ -102,43 +92,10 @@ func (h *FileHandler) UploadFile(c *fiber.Ctx) error {
 		FileType:     fileType,
 		Hash:         hash,
 		Status:       "active",
-		UploadedBy:   input.UploadedBy,
-		Metadata:     sql.JSONB(input.Metadata),
-		ExpiresAt:    input.ExpiresAt,
 	}
 
-	// Use transaction to save file record
-	err = sql.WithTransaction(database.DB, func(tx *gorm.DB) error {
-		if err := tx.Create(&fileRecord).Error; err != nil {
-			return err
-		}
-
-		// Create file share if requested
-		if input.IsPublic || input.Password != "" || input.MaxDownloads != nil {
-			shareToken, err := h.fileService.GenerateShareToken()
-			if err != nil {
-				return err
-			}
-
-			fileShare := models.FileShare{
-				FileID:       fileRecord.ID,
-				ShareToken:   shareToken,
-				ExpiresAt:    input.ExpiresAt,
-				MaxDownloads: input.MaxDownloads,
-				Password:     input.Password,
-				IsPublic:     input.IsPublic,
-				CreatedBy:    input.UploadedBy,
-			}
-
-			if err := tx.Create(&fileShare).Error; err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-
-	if err != nil {
+	// Save file record
+	if err := database.DB.Create(&fileRecord).Error; err != nil {
 		log.Printf("Failed to save file record: %v", err)
 		response := httpx.InternalServerError("Failed to process file upload", err)
 		return httpx.SendResponse(c, response)
@@ -166,9 +123,6 @@ func (h *FileHandler) GetFile(c *fiber.Ctx) error {
 		response := httpx.InternalServerError("Failed to fetch file", err)
 		return httpx.SendResponse(c, response)
 	}
-
-	// Log access
-	h.logFileAccess(file.ID, c, "view")
 
 	response := httpx.OK("File retrieved successfully", file)
 	return httpx.SendResponse(c, response)
@@ -199,15 +153,6 @@ func (h *FileHandler) DownloadFile(c *fiber.Ctx) error {
 		return httpx.SendResponse(c, response)
 	}
 
-	// Log access
-	h.logFileAccess(file.ID, c, "download")
-
-	// Update access count and last accessed time
-	database.DB.Model(&file).Updates(map[string]interface{}{
-		"access_count":  gorm.Expr("access_count + 1"),
-		"last_accessed": time.Now(),
-	})
-
 	// Send file
 	return c.Download(file.FilePath, file.OriginalName)
 }
@@ -227,6 +172,12 @@ func (h *FileHandler) UpdateFile(c *fiber.Ctx) error {
 		return httpx.SendResponse(c, response)
 	}
 
+	// Validate request
+	if err := validator.ValidateStruct(&input); err != nil {
+		response := httpx.BadRequest("Validation failed", err)
+		return httpx.SendResponse(c, response)
+	}
+
 	var file models.File
 	if err := database.DB.First(&file, fileID).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -241,12 +192,6 @@ func (h *FileHandler) UpdateFile(c *fiber.Ctx) error {
 	updates := make(map[string]interface{})
 	if input.FileName != nil {
 		updates["original_name"] = *input.FileName
-	}
-	if input.Metadata != nil {
-		updates["metadata"] = sql.JSONB(input.Metadata)
-	}
-	if input.ExpiresAt != nil {
-		updates["expires_at"] = input.ExpiresAt
 	}
 	if input.Status != nil {
 		updates["status"] = input.Status
@@ -282,27 +227,8 @@ func (h *FileHandler) DeleteFile(c *fiber.Ctx) error {
 		return httpx.SendResponse(c, response)
 	}
 
-	// Use transaction to delete file and related records
-	err = sql.WithTransaction(database.DB, func(tx *gorm.DB) error {
-		// Delete file shares
-		if err := tx.Where("file_id = ?", fileID).Delete(&models.FileShare{}).Error; err != nil {
-			return err
-		}
-
-		// Delete file access logs
-		if err := tx.Where("file_id = ?", fileID).Delete(&models.FileAccess{}).Error; err != nil {
-			return err
-		}
-
-		// Delete file record
-		if err := tx.Delete(&file).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	if err != nil {
+	// Delete file record
+	if err := database.DB.Delete(&file).Error; err != nil {
 		response := httpx.InternalServerError("Failed to delete file", err)
 		return httpx.SendResponse(c, response)
 	}
@@ -321,6 +247,12 @@ func (h *FileHandler) SearchFiles(c *fiber.Ctx) error {
 	var input requests.FileSearchRequest
 	if err := c.QueryParser(&input); err != nil {
 		response := httpx.BadRequest("Invalid query parameters", err)
+		return httpx.SendResponse(c, response)
+	}
+
+	// Validate request
+	if err := validator.ValidateStruct(&input); err != nil {
+		response := httpx.BadRequest("Validation failed", err)
 		return httpx.SendResponse(c, response)
 	}
 
@@ -350,9 +282,6 @@ func (h *FileHandler) SearchFiles(c *fiber.Ctx) error {
 	}
 	if input.Status != "" {
 		query = query.Where("status = ?", input.Status)
-	}
-	if input.UploadedBy != nil {
-		query = query.Where("uploaded_by = ?", input.UploadedBy)
 	}
 	if input.UploadedAfter != nil {
 		query = query.Where("created_at >= ?", input.UploadedAfter)
@@ -395,29 +324,18 @@ func (h *FileHandler) SearchFiles(c *fiber.Ctx) error {
 	return httpx.SendResponse(c, response)
 }
 
-// logFileAccess logs file access for analytics
-func (h *FileHandler) logFileAccess(fileID uuid.UUID, c *fiber.Ctx, accessType string) {
-	fileAccess := models.FileAccess{
-		FileID:     fileID,
-		IPAddress:  c.IP(),
-		UserAgent:  c.Get("User-Agent"),
-		Referer:    c.Get("Referer"),
-		AccessType: accessType,
-		AccessTime: time.Now(),
-		SessionID:  c.Get("X-Session-ID"),
+// GetFileLimits returns file size limits for different extensions
+func (h *FileHandler) GetFileLimits(c *fiber.Ctx) error {
+	limits := map[string]interface{}{
+		"default_max_size": h.fileService.GetMaxFileSizeForExtension(""),
+		"extensions":       make(map[string]int64),
 	}
 
-	// Try to get user ID from context if available
-	if userID := c.Locals("userID"); userID != nil {
-		if uid, ok := userID.(uuid.UUID); ok {
-			fileAccess.UserID = &uid
-		}
+	// Get limits for each allowed extension
+	for _, ext := range []string{"jpg", "jpeg", "png", "gif", "pdf", "doc", "docx", "xls", "xlsx", "txt", "csv", "zip", "rar", "mp4", "avi", "mov", "mp3", "wav"} {
+		limits["extensions"].(map[string]int64)[ext] = h.fileService.GetMaxFileSizeForExtension(ext)
 	}
 
-	// Log access asynchronously
-	go func() {
-		if err := database.DB.Create(&fileAccess).Error; err != nil {
-			log.Printf("Failed to log file access: %v", err)
-		}
-	}()
+	response := httpx.OK("File limits retrieved successfully", limits)
+	return httpx.SendResponse(c, response)
 }

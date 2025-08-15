@@ -2,7 +2,6 @@ package services
 
 import (
 	"crypto/md5"
-	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -33,11 +32,6 @@ func NewFileService() *FileService {
 
 // ValidateFile validates the uploaded file
 func (s *FileService) ValidateFile(file *multipart.FileHeader) error {
-	// Check file size
-	if file.Size > s.config.Validation.MaxFileSize {
-		return errors.BadRequestError("FILE_TOO_LARGE", fmt.Sprintf("File size exceeds maximum allowed size of %d bytes", s.config.Validation.MaxFileSize))
-	}
-
 	// Get file extension
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 	if ext == "" {
@@ -62,6 +56,19 @@ func (s *FileService) ValidateFile(file *multipart.FileHeader) error {
 	}
 	if !allowed {
 		return errors.BadRequestError("INVALID_FILE_TYPE", fmt.Sprintf("File type .%s is not allowed", ext))
+	}
+
+	// Check file size based on extension
+	maxSize := s.config.Validation.DefaultMaxFileSize
+	if extensionLimit, exists := s.config.Validation.MaxFileSizePerExtension[ext]; exists {
+		maxSize = extensionLimit
+	}
+
+	if file.Size > maxSize {
+		// Convert to MB for better error message
+		maxSizeMB := maxSize / (1024 * 1024)
+		fileSizeMB := file.Size / (1024 * 1024)
+		return errors.BadRequestError("FILE_TOO_LARGE", fmt.Sprintf("File size %dMB exceeds maximum allowed size of %dMB for .%s files", fileSizeMB, maxSizeMB, ext))
 	}
 
 	// MIME type validation if enabled
@@ -253,11 +260,14 @@ func (s *FileService) CalculateFileHash(filePath string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// GenerateShareToken generates a secure share token
-func (s *FileService) GenerateShareToken() (string, error) {
-	token := make([]byte, 32)
-	if _, err := rand.Read(token); err != nil {
-		return "", errors.InternalError("TOKEN_GENERATION_ERROR", "Failed to generate share token")
+// GetMaxFileSizeForExtension returns the maximum allowed file size for a specific extension
+func (s *FileService) GetMaxFileSizeForExtension(extension string) int64 {
+	ext := strings.ToLower(extension)
+	ext = strings.TrimPrefix(ext, ".")
+
+	if maxSize, exists := s.config.Validation.MaxFileSizePerExtension[ext]; exists {
+		return maxSize
 	}
-	return hex.EncodeToString(token), nil
+
+	return s.config.Validation.DefaultMaxFileSize
 }

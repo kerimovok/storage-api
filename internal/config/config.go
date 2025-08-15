@@ -12,50 +12,31 @@ import (
 
 // FileValidationConfig holds file validation settings
 type FileValidationConfig struct {
-	MaxFileSize          int64    `yaml:"max_file_size"`
-	AllowedExtensions    []string `yaml:"allowed_extensions"`
-	BlockedExtensions    []string `yaml:"blocked_extensions"`
-	StrictMimeValidation bool     `yaml:"strict_mime_validation"`
+	MaxFileSizePerExtension map[string]int64 `yaml:"max_file_size_per_extension"`
+	DefaultMaxFileSize      int64            `yaml:"default_max_file_size"`
+	AllowedExtensions       []string         `yaml:"allowed_extensions"`
+	BlockedExtensions       []string         `yaml:"blocked_extensions"`
+	StrictMimeValidation    bool             `yaml:"strict_mime_validation"`
 }
 
 // FileNamingConfig holds file naming strategy settings
 type FileNamingConfig struct {
 	Strategy          string `yaml:"strategy"`
-	CustomFunction    string `yaml:"custom_function"`
 	PreserveExtension bool   `yaml:"preserve_extension"`
 }
 
 // StorageOrganizationConfig holds file organization settings
 type StorageOrganizationConfig struct {
-	Pattern       string           `yaml:"pattern"`
-	CustomPattern string           `yaml:"custom_pattern"`
-	DateFormat    string           `yaml:"date_format"`
-	IncludeTime   bool             `yaml:"include_time"`
-	Naming        FileNamingConfig `yaml:"naming"`
+	Pattern     string           `yaml:"pattern"`
+	DateFormat  string           `yaml:"date_format"`
+	IncludeTime bool             `yaml:"include_time"`
+	Naming      FileNamingConfig `yaml:"naming"`
 }
 
 // LocalStorageConfig holds local storage settings
 type LocalStorageConfig struct {
-	UploadDir       string `yaml:"upload_dir"`
-	CreateDirs      bool   `yaml:"create_dirs"`
-	FilePermissions string `yaml:"file_permissions"`
-	DirPermissions  string `yaml:"dir_permissions"`
-}
-
-// SecurityConfig holds security settings
-type SecurityConfig struct {
-	SecureURLs       bool     `yaml:"secure_urls"`
-	URLExpiration    int      `yaml:"url_expiration"`
-	RequireAuth      bool     `yaml:"require_auth"`
-	AllowedReferrers []string `yaml:"allowed_referrers"`
-}
-
-// CleanupConfig holds cleanup settings
-type CleanupConfig struct {
-	Enabled       bool   `yaml:"enabled"`
-	Interval      int    `yaml:"interval"`
-	RetentionDays int    `yaml:"retention_days"`
-	Strategy      string `yaml:"strategy"`
+	UploadDir  string `yaml:"upload_dir"`
+	CreateDirs bool   `yaml:"create_dirs"`
 }
 
 // StorageConfig holds the complete storage configuration
@@ -63,8 +44,6 @@ type StorageConfig struct {
 	Validation   FileValidationConfig      `yaml:"validation"`
 	Organization StorageOrganizationConfig `yaml:"organization"`
 	Storage      LocalStorageConfig        `yaml:"storage"`
-	Security     SecurityConfig            `yaml:"security"`
-	Cleanup      CleanupConfig             `yaml:"cleanup"`
 }
 
 // MainConfig holds the root configuration
