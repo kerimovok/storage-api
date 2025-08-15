@@ -51,6 +51,14 @@ storage:
               extensions: ['app', 'dmg', 'deb', 'rpm']
               allow: false
 
+    # Upload settings
+    upload:
+        # Maximum number of files that can be uploaded in a single request
+        max_files: 10
+
+        # Maximum total size for all files in a single upload request
+        max_total_size: '100MB'
+
     # Storage organization settings
     organization:
         # Default organization pattern: date/type/filename

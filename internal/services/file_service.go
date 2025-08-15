@@ -58,6 +58,41 @@ func (s *FileService) ValidateFile(file *multipart.FileHeader) error {
 	return nil
 }
 
+// ValidateMultipleFiles validates multiple uploaded files
+func (s *FileService) ValidateMultipleFiles(files []*multipart.FileHeader) error {
+	// Check maximum number of files
+	if len(files) > s.config.Upload.MaxFiles {
+		return errors.BadRequestError("TOO_MANY_FILES", fmt.Sprintf("Maximum %d files allowed per upload", s.config.Upload.MaxFiles))
+	}
+
+	// Calculate total size
+	var totalSize int64
+	for _, file := range files {
+		totalSize += file.Size
+	}
+
+	// Check total size limit
+	maxTotalSize, err := utils.ParseSizeString(s.config.Upload.MaxTotalSize)
+	if err != nil {
+		// If parsing fails, use a reasonable default
+		maxTotalSize = 100 * 1024 * 1024 // 100MB
+	}
+
+	if totalSize > maxTotalSize {
+		return errors.BadRequestError("TOTAL_SIZE_EXCEEDED", fmt.Sprintf("Total file size %s exceeds limit %s",
+			constants.FormatFileSize(totalSize), s.config.Upload.MaxTotalSize))
+	}
+
+	// Validate each individual file
+	for _, file := range files {
+		if err := s.ValidateFile(file); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // validateMimeType validates the MIME type of the file
 func (s *FileService) validateMimeType(file *multipart.FileHeader, validationResult *constants.ValidationResult) error {
 	// Open file to check MIME type
@@ -196,6 +231,78 @@ func (s *FileService) SaveFile(file *multipart.FileHeader, filePath string) erro
 	return nil
 }
 
+// ProcessMultipleFiles processes multiple uploaded files
+func (s *FileService) ProcessMultipleFiles(files []*multipart.FileHeader) ([]*FileUploadResult, error) {
+	var results []*FileUploadResult
+
+	for _, file := range files {
+		// Determine file type from extension
+		ext := utils.GetFileExtensionFromHeader(file)
+		fileType := ext
+
+		// Generate file path and name
+		filePath, storedName, err := s.GenerateFilePath(file.Filename, fileType)
+		if err != nil {
+			results = append(results, &FileUploadResult{
+				OriginalName: file.Filename,
+				Success:      false,
+				Error:        err.Error(),
+			})
+			continue
+		}
+
+		// Save file to storage
+		if err := s.SaveFile(file, filePath); err != nil {
+			results = append(results, &FileUploadResult{
+				OriginalName: file.Filename,
+				Success:      false,
+				Error:        err.Error(),
+			})
+			continue
+		}
+
+		// Calculate file hash
+		hash, err := s.CalculateFileHash(filePath)
+		if err != nil {
+			results = append(results, &FileUploadResult{
+				OriginalName: file.Filename,
+				Success:      false,
+				Error:        err.Error(),
+			})
+			continue
+		}
+
+		// Add successful result
+		results = append(results, &FileUploadResult{
+			OriginalName: file.Filename,
+			StoredName:   storedName,
+			FilePath:     filePath,
+			FileSize:     file.Size,
+			MimeType:     file.Header.Get("Content-Type"),
+			Extension:    ext,
+			FileType:     fileType,
+			Hash:         hash,
+			Success:      true,
+		})
+	}
+
+	return results, nil
+}
+
+// FileUploadResult contains the result of processing a single file
+type FileUploadResult struct {
+	OriginalName string `json:"original_name"`
+	StoredName   string `json:"stored_name,omitempty"`
+	FilePath     string `json:"file_path,omitempty"`
+	FileSize     int64  `json:"file_size,omitempty"`
+	MimeType     string `json:"mime_type,omitempty"`
+	Extension    string `json:"extension,omitempty"`
+	FileType     string `json:"file_type,omitempty"`
+	Hash         string `json:"hash,omitempty"`
+	Success      bool   `json:"success"`
+	Error        string `json:"error,omitempty"`
+}
+
 // CalculateFileHash calculates MD5 hash of the file
 func (s *FileService) CalculateFileHash(filePath string) (string, error) {
 	file, err := os.Open(filePath)
@@ -270,6 +377,11 @@ func (s *FileService) ValidateFileType(extension string, size int64) *constants.
 // GetValidationConfig returns the validation configuration
 func (s *FileService) GetValidationConfig() config.FileValidationConfig {
 	return s.config.Validation
+}
+
+// GetUploadConfig returns the upload configuration
+func (s *FileService) GetUploadConfig() config.UploadConfig {
+	return s.config.Upload
 }
 
 // GetFileInfo returns comprehensive information about a file

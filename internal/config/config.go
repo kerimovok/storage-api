@@ -30,6 +30,12 @@ type FileValidationConfig struct {
 	Rules                []ValidationRule `yaml:"rules"`
 }
 
+// UploadConfig holds upload settings
+type UploadConfig struct {
+	MaxFiles     int    `yaml:"max_files"`
+	MaxTotalSize string `yaml:"max_total_size"`
+}
+
 // FileNamingConfig holds file naming strategy settings
 type FileNamingConfig struct {
 	Strategy          string `yaml:"strategy"`
@@ -53,6 +59,7 @@ type LocalStorageConfig struct {
 // StorageConfig holds the complete storage configuration
 type StorageConfig struct {
 	Validation   FileValidationConfig      `yaml:"validation"`
+	Upload       UploadConfig              `yaml:"upload"`
 	Organization StorageOrganizationConfig `yaml:"organization"`
 	Storage      LocalStorageConfig        `yaml:"storage"`
 }

@@ -1,13 +1,13 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"storage-api/internal/database"
 	"storage-api/internal/models"
 	"storage-api/internal/requests"
 	"storage-api/internal/services"
-	"storage-api/internal/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -31,77 +31,111 @@ func NewFileHandler() *FileHandler {
 // UploadFile handles file upload requests
 func (h *FileHandler) UploadFile(c *fiber.Ctx) error {
 	// Parse multipart form
-	file, err := c.FormFile("file")
+	form, err := c.MultipartForm()
 	if err != nil {
-		response := httpx.BadRequest("No file provided", err)
+		response := httpx.BadRequest("Failed to parse multipart form", err)
 		return httpx.SendResponse(c, response)
 	}
 
-	// Parse additional form data
-	var input requests.UploadFileRequest
-	if err := c.BodyParser(&input); err != nil {
-		response := httpx.BadRequest("Invalid request body", err)
+	// Get files from form
+	files := form.File["files"]
+	if len(files) == 0 {
+		response := httpx.BadRequest("No files provided. Use 'files' field for file uploads", nil)
 		return httpx.SendResponse(c, response)
 	}
 
-	// Validate request
-	if err := validator.ValidateStruct(&input); err != nil {
-		response := httpx.BadRequest("Validation failed", err)
-		return httpx.SendResponse(c, response)
-	}
-
-	// Validate file
-	if err := h.fileService.ValidateFile(file); err != nil {
+	// Validate multiple files
+	if err := h.fileService.ValidateMultipleFiles(files); err != nil {
 		response := httpx.BadRequest("File validation failed", err)
 		return httpx.SendResponse(c, response)
 	}
 
-	// Determine file type from extension
-	ext := utils.GetFileExtensionFromHeader(file)
-	fileType := ext
-
-	// Generate file path and name
-	filePath, storedName, err := h.fileService.GenerateFilePath(file.Filename, fileType)
+	// Process all files
+	uploadResults, err := h.fileService.ProcessMultipleFiles(files)
 	if err != nil {
-		response := httpx.InternalServerError("Failed to generate file path", err)
+		response := httpx.InternalServerError("Failed to process files", err)
 		return httpx.SendResponse(c, response)
 	}
 
-	// Save file to storage
-	if err := h.fileService.SaveFile(file, filePath); err != nil {
-		response := httpx.InternalServerError("Failed to save file", err)
-		return httpx.SendResponse(c, response)
+	// Create file records for successful uploads
+	var fileRecords []models.File
+	var failedUploads []map[string]interface{}
+
+	for _, result := range uploadResults {
+		if result.Success {
+			// Create file record
+			fileRecord := models.File{
+				OriginalName: result.OriginalName,
+				StoredName:   result.StoredName,
+				FilePath:     result.FilePath,
+				FileSize:     result.FileSize,
+				MimeType:     result.MimeType,
+				Extension:    result.Extension,
+				FileType:     result.FileType,
+				Hash:         result.Hash,
+				Status:       "active",
+			}
+
+			// Save file record
+			if err := database.DB.Create(&fileRecord).Error; err != nil {
+				log.Printf("Failed to save file record for %s: %v", result.OriginalName, err)
+				// Mark as failed
+				result.Success = false
+				result.Error = "Failed to save file record"
+			} else {
+				fileRecords = append(fileRecords, fileRecord)
+			}
+		}
+
+		// Add failed uploads to separate list
+		if !result.Success {
+			failedUploads = append(failedUploads, map[string]interface{}{
+				"original_name": result.OriginalName,
+				"error":         result.Error,
+			})
+		}
 	}
 
-	// Calculate file hash
-	hash, err := h.fileService.CalculateFileHash(filePath)
-	if err != nil {
-		response := httpx.InternalServerError("Failed to calculate file hash", err)
-		return httpx.SendResponse(c, response)
+	// Build response
+	responseData := map[string]interface{}{
+		"uploaded_files": fileRecords,
+		"total_files":    len(files),
+		"successful":     len(fileRecords),
+		"failed":         len(failedUploads),
 	}
 
-	// Create file record
-	fileRecord := models.File{
-		OriginalName: file.Filename,
-		StoredName:   storedName,
-		FilePath:     filePath,
-		FileSize:     file.Size,
-		MimeType:     file.Header.Get("Content-Type"),
-		Extension:    ext,
-		FileType:     fileType,
-		Hash:         hash,
-		Status:       "active",
+	if len(failedUploads) > 0 {
+		responseData["failed_uploads"] = failedUploads
 	}
 
-	// Save file record
-	if err := database.DB.Create(&fileRecord).Error; err != nil {
-		log.Printf("Failed to save file record: %v", err)
-		response := httpx.InternalServerError("Failed to process file upload", err)
-		return httpx.SendResponse(c, response)
+	// Determine response message
+	var message string
+	if len(failedUploads) == 0 {
+		message = "All files uploaded successfully"
+	} else if len(fileRecords) == 0 {
+		message = "No files were uploaded successfully"
+	} else {
+		message = fmt.Sprintf("Uploaded %d files, %d failed", len(fileRecords), len(failedUploads))
 	}
 
-	response := httpx.Created("File uploaded successfully", fileRecord)
-	return httpx.SendResponse(c, response)
+	// Determine HTTP status
+	var status int
+	if len(failedUploads) == 0 {
+		status = fiber.StatusCreated
+	} else if len(fileRecords) == 0 {
+		status = fiber.StatusBadRequest
+	} else {
+		status = fiber.StatusPartialContent
+	}
+
+	response := httpx.Response{
+		Success: true,
+		Message: message,
+		Data:    responseData,
+		Status:  status,
+	}
+
+	return c.Status(status).JSON(response)
 }
 
 // GetFile retrieves file information
@@ -325,9 +359,15 @@ func (h *FileHandler) SearchFiles(c *fiber.Ctx) error {
 
 // GetFileLimits returns file size limits for different extensions
 func (h *FileHandler) GetFileLimits(c *fiber.Ctx) error {
+	uploadConfig := h.fileService.GetUploadConfig()
+
 	limits := map[string]interface{}{
 		"default_max_size": h.fileService.GetMaxFileSizeForExtension(""),
 		"extensions":       make(map[string]int64),
+		"upload_limits": map[string]interface{}{
+			"max_files":      uploadConfig.MaxFiles,
+			"max_total_size": uploadConfig.MaxTotalSize,
+		},
 	}
 
 	// Get limits for each allowed extension

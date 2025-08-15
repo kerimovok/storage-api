@@ -29,7 +29,7 @@ func SetupRoutes(app *fiber.App) {
 	fileHandler := handlers.NewFileHandler()
 
 	files := v1.Group("/files")
-	files.Post("/upload", fileHandler.UploadFile)
+	files.Post("/", fileHandler.UploadFile)
 	files.Get("/", fileHandler.SearchFiles)
 	files.Get("/limits", fileHandler.GetFileLimits)
 	files.Get("/:id", fileHandler.GetFile)

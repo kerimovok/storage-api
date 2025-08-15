@@ -4,9 +4,6 @@ import (
 	"time"
 )
 
-// UploadFileRequest represents a file upload request
-type UploadFileRequest struct{}
-
 // UpdateFileRequest represents a file update request
 type UpdateFileRequest struct {
 	FileName *string `json:"fileName,omitempty"`
