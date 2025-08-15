@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"storage-api/internal/config"
@@ -66,18 +67,25 @@ func main() {
 	// Setup routes
 	routes.SetupRoutes(app)
 
-	// Graceful shutdown channel
+	// Setup graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		<-quit
-		log.Println("shutting down server...")
+		log.Println("Gracefully shutting down...")
 
+		// Shutdown the server
 		if err := app.Shutdown(); err != nil {
-			log.Fatalf("server forced to shutdown: %v", err)
+			log.Printf("error during server shutdown: %v", err)
 		}
+
+		log.Println("Server gracefully stopped")
+		os.Exit(0)
 	}()
 
-	log.Fatalf("failed to start server: %v", app.Listen(":"+pkgConfig.GetEnv("PORT")))
+	// Start server
+	if err := app.Listen(":" + pkgConfig.GetEnv("PORT")); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("failed to start server: %v", err)
+	}
 }
